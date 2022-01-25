@@ -1,0 +1,5 @@
+board~=1.0
+adafruit-circuitpython-busdevice~=5.1.1
+adafruit-circuitpython-ina219~=3.4.10
+adafruit-circuitpython-register~=1.9.6
+pi-ina219~=1.4.0
