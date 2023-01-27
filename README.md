@@ -13,3 +13,7 @@ Run script using the following python command:
 ````
 python measure.py logfile
 ````
+
+## diy pi hat
+
+![DIY Hat](https://github.com/SparkWorksnet/pi-power-meter/blob/main/diy_hat.jpg?raw=true)
