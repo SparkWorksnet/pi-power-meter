@@ -1,46 +1,97 @@
 #!/usr/bin/env python
-import board
-import busio
-from adafruit_ina219 import ADCResolution, BusVoltageRange, INA219
+import getopt
+import logging
+from tempfile import gettempdir
+
 import sys
 import time
+from influxdb import InfluxDBClient
+import datetime
+from stat_util import *
+from influx_util import get_points
 
-i2c_bus = busio.I2C(board.SCL, board.SDA)
-ina219 = INA219(i2c_bus)
+NAME = 'measure'
 
-# display some of the advanced field (just to test)
-print('# Config register:')
-print('#   bus_voltage_range:    0x%1X' % ina219.bus_voltage_range)
-print('#   gain:                 0x%1X' % ina219.gain)
-print('#   bus_adc_resolution:   0x%1X' % ina219.bus_adc_resolution)
-print('#   shunt_adc_resolution: 0x%1X' % ina219.shunt_adc_resolution)
-print('#   mode:                 0x%1X' % ina219.mode)
-print('# ')
-
-# optional : change configuration to use 32 samples averaging for both bus voltage and shunt voltage
-ina219.bus_adc_resolution = ADCResolution.ADCRES_12BIT_32S
-ina219.shunt_adc_resolution = ADCResolution.ADCRES_12BIT_32S
-# optional : change voltage range to 16V
-ina219.bus_voltage_range = BusVoltageRange.RANGE_16V
+LOGGING_FORMAT = '%(asctime)s-%(filename)s:%(lineno)d-%(levelname)s- %(message)s'
+# initialize logger
+logger = logging.getLogger(NAME)
+log_dir = gettempdir()
+logging.basicConfig(level=logging.INFO, format=LOGGING_FORMAT)
 
 
-def read():
+def loop(time_start, output_file, ina219, influx_client):
+    while True:
+        now_time = datetime.datetime.utcnow()
+        power_data = read_power_sensor(ina219)
+        data_list = power_data
+        cpu_data = read_cpu_usage()
+        data_list.extend(cpu_data)
+        mem_data = read_memory_usage()
+        data_list.extend(mem_data)
+        disk_data = read_disk_io()
+        data_list.extend(disk_data)
+        net_data = read_net_io()
+        data_list.extend(net_data)
+        line = f'{int(time.time() * 1000) - time_start},{",".join([str(i) for i in data_list])}'
+        logger.info(line)
+        # Writing data to a file
+        output_file.writelines(line + "\n")
+        output_file.flush()
+        if influx_client is not None:
+            influx_client.write_points(get_points(now_time, power_data, cpu_data, mem_data, disk_data, net_data))
+        time.sleep(0.1)
+
+
+def help():
+    print(f'{NAME}.py -o outfile.data')
+
+
+def main(argv):
+    outfile = None
+    influx_host = None
+    influx_db = None
+    influx_client = None
+    time_start = int(time.time() * 1000)
     try:
-        return (ina219.bus_voltage, ina219.power, ina219.current, ina219.shunt_voltage)
-    except DeviceRangeError as e:
-        # Current out of device range with specified shunt resistor
-        print('DeviceRangeError', e)
+        opts, args = getopt.getopt(argv, 'vhio:h:d:', ['output=', 'host=', 'db='])
+    except getopt.GetoptError:
+        help()
+        sys.exit(2)
+    for opt, arg in opts:
+        if opt == '-h':
+            help()
+            sys.exit()
+        elif opt in ('-o', '--output'):
+            outfile = arg
+        elif opt in ('-h', '--host'):
+            influx_host = arg
+        elif opt in ('-d', '--db'):
+            influx_db = arg
+    if influx_host is not None and influx_db is not None:
+        influx_client = InfluxDBClient(host=influx_host, port=8086)
+        influx_client.create_database(influx_db)
+        # print(client.get_list_database())
+        influx_client.switch_database(influx_db)
+        logger.info('db connected')
+    if outfile is None:
+        help()
+    else:
+        ina219 = setup_ina219()
+        with open(outfile, 'w') as output_file:
+            try:
+                output_file.writelines(','.join([
+                    '#time',
+                    ','.join(['power_' + x for x in power_stats]),
+                    ','.join(['cpu_' + x for x in cpu_stats]),
+                    ','.join(['mem_' + x for x in mem_stats]),
+                    ','.join(['disk_' + x for x in disk_stats]),
+                    ','.join(['net_' + x for x in net_stats]),
+                    '\n'
+                ]))
+                loop(time_start, output_file, ina219, influx_client)
+            except Exception as e:
+                print(e)
 
 
 if __name__ == '__main__':
-    time_start = int(time.time() * 1000)
-    with open(sys.argv[1], 'w') as file1:
-        file1.writelines('#time,voltage,current,power,shunt_voltage\n')
-        while True:
-            (a, b, c, d) = read()
-            line = f'{int(time.time() * 1000) - time_start},{a},{b},{c},{d}'
-            print(line)
-            # Writing data to a file
-            file1.writelines(line + "\n")
-            file1.flush()
-            time.sleep(0.1)
+    main(sys.argv[1:])
