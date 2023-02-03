@@ -49,7 +49,7 @@ def help():
 def main(argv):
     outfile = None
     influx_host = None
-    influx_db = None
+    influx_db = 'stat'
     influx_client = None
     time_start = int(time.time() * 1000)
     try:
