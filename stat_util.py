@@ -10,7 +10,7 @@ LOGGING_FORMAT = '%(asctime)s-%(filename)s:%(lineno)d-%(levelname)s- %(message)s
 logger = logging.getLogger(NAME)
 logging.basicConfig(level=logging.INFO, format=LOGGING_FORMAT)
 
-power_stats = ['voltage', 'current', 'power', 'shunt_voltage']
+power_stats = ['voltage', 'power', 'current', 'shunt_voltage']
 cpu_stats = ['1', '5', '15']
 mem_stats = ['total', 'available', 'percent', 'used', 'free', 'active', 'inactive', 'buffers', 'cached', 'shared',
              'slab']
